@@ -1,0 +1,57 @@
+name: 每日选股
+
+# 每天北京时间 15:30 自动运行 (收盘后数据稳定)
+# GitHub Actions 用 UTC, 北京时间=UTC+8, 所以 15:30 CST = 07:30 UTC
+on:
+  schedule:
+    - cron: '30 7 * * 1-5'   # 周一至周五 07:30 UTC = 15:30 北京时间
+  workflow_dispatch:         # 也支持手动触发(在Actions页点Run workflow)
+
+jobs:
+  screener:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      # 1. 检出代码
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # 2. 安装 Node
+      - name: 安装 Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # 3. 运行选股脚本
+      - name: 运行选股脚本
+        run: node screener.js
+
+      # 4. 提交选股结果到仓库 (daily_result.json + 备份历史)
+      - name: 提交选股结果
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          mkdir -p history
+          if [ -f daily_result.json ]; then
+            cp daily_result.json "history/$(date +%Y-%m-%d).json" || true
+          fi
+          git add -A
+          git commit -m "每日选股结果 $(date +%Y-%m-%d)" || echo "无变更可提交"
+          git push
+        timeout-minutes: 5
+
+      # 5. 发布到 GitHub Pages (手机/看板通过公开链接查看)
+      - name: 发布到 GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          publish_branch: gh-pages
+          enable_jekyll: false
+          force_orphan: true
+
+      # 6. 失败时标记
+      - name: 运行失败标记
+        if: failure()
+        run: echo "::warning::选股脚本运行失败, 请检查日志"
