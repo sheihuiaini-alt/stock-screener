@@ -5,7 +5,7 @@ name: 每日选股
 on:
   schedule:
     - cron: '30 7 * * 1-5'   # 周一至周五 07:30 UTC = 15:30 北京时间
-  workflow_dispatch:         # 也支持手动触发(在Actions页点Run workflow)
+  workflow_dispatch: # 也支持手动触发(在Actions页点Run workflow)
 
 jobs:
   screener:
@@ -21,25 +21,27 @@ jobs:
       - name: 安装 Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
 
       # 3. 运行选股脚本
       - name: 运行选股脚本
         run: node screener.js
 
       # 4. 提交选股结果到仓库 (daily_result.json + 备份历史)
+      # 注意: 先 git pull --rebase 同步远端, 避免 push 冲突
       - name: 提交选股结果
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git pull --rebase --autostash || true
+          git pull --rebase --autostash || echo "(首次运行或无需同步)"
           mkdir -p history
           if [ -f daily_result.json ]; then
             cp daily_result.json "history/$(date +%Y-%m-%d).json" || true
           fi
           git add -A
           git commit -m "每日选股结果 $(date +%Y-%m-%d)" || echo "无变更可提交"
-          git push || (git pull --rebase --autostash && git push)
+          git pull --rebase --autostash || true
+          git push || (sleep 2 && git pull --rebase --autostash && git push)
         timeout-minutes: 5
 
       # 5. 发布到 GitHub Pages (手机/看板通过公开链接查看)
