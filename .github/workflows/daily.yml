@@ -32,13 +32,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase --autostash || true
           mkdir -p history
           if [ -f daily_result.json ]; then
             cp daily_result.json "history/$(date +%Y-%m-%d).json" || true
           fi
           git add -A
           git commit -m "每日选股结果 $(date +%Y-%m-%d)" || echo "无变更可提交"
-          git push
+          git push || (git pull --rebase --autostash && git push)
         timeout-minutes: 5
 
       # 5. 发布到 GitHub Pages (手机/看板通过公开链接查看)
