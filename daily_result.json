@@ -1,5 +1,5 @@
 {
-  "generate_time": "2026/8/5 20:38:17",
+  "generate_time": "2026/8/5 21:28:53",
   "generated_date": "2026-08-05",
   "note": "底部企稳(站上5/10/20日线)+放量1.5x+主力连续3天净流入; 仅供参考, 不构成投资建议",
   "strategy": "v2.0 企稳放量资金策略",
@@ -9,7 +9,7 @@
     "ok": true,
     "reason": "上证收盘3878.43 vs 20日线3869.09 (已站上-企稳)"
   },
-  "total_scanned": 662,
+  "total_scanned": 661,
   "passed_count": 7,
   "top": [
     {
