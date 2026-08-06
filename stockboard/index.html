@@ -313,9 +313,11 @@
   .xys-chart { display:none; margin-top:8px; }
   .xys-chart.open { display:block; }
   #xysChart { width:100%; height:220px; }
+  #xysAlertBar { display:none; padding:9px 12px; margin-bottom:10px; border-radius:8px; background:linear-gradient(90deg,rgba(243,66,66,.16),rgba(88,166,255,.10)); border:1px solid rgba(243,66,66,.5); color:#f0b6b6; font-size:12.5px; line-height:1.5; }
 </style>
 
 <div class="xys-card" id="xysCard">
+  <div id="xysAlertBar"></div>
   <div class="xys-top">
     <b>新易盛 300502</b>
     <span class="sub">加仓信号 · 基于缩量/企稳/回踩规则</span>
@@ -1352,6 +1354,21 @@ loadScreener();
       pnl:price-COST, pnlPct:(price-COST)/COST*100, bars:bars };
   }
 
+  /* 加仓信号横幅: 检测到加仓/企稳时显示醒目提醒, 并写入localStorage持久记录 */
+  var lastAlertKey='xys_last_alert';
+  function showAlert(s){
+    var isSignal = /加仓|缩量企稳/.test(s.state);
+    var bar=$('xysAlertBar');
+    if(isSignal){
+      if(bar){
+        bar.innerHTML='⚠️ <b>新易盛加仓信号已触发：</b>'+s.state+' — 现价'+s.price.toFixed(2)+
+          '元('+(s.pnlPct>=0?'+':'')+s.pnlPct.toFixed(2)+'%) · <span onclick="this.parentNode.style.display=&#39;none&#39;" style="float:right;cursor:pointer;opacity:.7">✕ 关闭</span>';
+        bar.style.display='block';
+      }
+      try{ localStorage.setItem(lastAlertKey, JSON.stringify({t:new Date().toLocaleString('zh-CN'),state:s.state,price:s.price})); }catch(e){}
+    }
+  }
+
   function render(s, rt){
     var badge=$('xysBadge'); badge.textContent=s.state; badge.className='xys-badge '+s.cls;
     $('xysPrice').textContent=s.price.toFixed(2);
@@ -1427,8 +1444,18 @@ loadScreener();
     if(chartShown && klineBars){ var c=echarts.getInstanceByDom($('xysChart')); if(c)c.resize(); }
   };
 
+  /* 打开页面时检查历史加仓记录, 若有则提示 */
+  try{
+    var last=localStorage.getItem(lastAlertKey);
+    if(last){ var la=JSON.parse(last); $('xysAlertBar').innerHTML='📌 最近一次加仓信号：'+la.state+'（'+la.t+'，现价'+la.price.toFixed(2)+'元）<span onclick="this.parentNode.style.display=&#39;none&#39;" style="float:right;cursor:pointer;opacity:.7">✕</span>'; $('xysAlertBar').style.display='block'; }
+  }catch(e){}
+
   loadAll();
   loadReal();
+  /* 触发加仓信号时也弹出横幅 */
+  setInterval(function(){
+    if(klineBars){ var s=computeSignal(klineBars, price!=null?price:klineBars[klineBars.length-1].close); if(s){ render(s, null); showAlert(s); } }
+  }, 30000);
   setInterval(loadReal, 60000);
   setInterval(loadAll, 300000);
 })();
