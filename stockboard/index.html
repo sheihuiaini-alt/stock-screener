@@ -288,6 +288,54 @@
   </div>
 </div>
 
+<!-- ===== 新易盛(300502) 加仓信号卡 ===== -->
+<style>
+  .xys-card { background:var(--card); border:1px solid var(--border); border-radius:12px;
+    padding:14px 16px; margin-bottom:14px; }
+  .xys-top { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+  .xys-top b { font-size:15px; }
+  .xys-top .sub { font-size:11px; color:var(--muted); }
+  .xys-spacer { flex:1; }
+  .xys-badge { font-size:14px; font-weight:800; padding:4px 12px; border-radius:8px; }
+  .bd-bad  { color:var(--up); background:rgba(243,66,66,.13); }
+  .bd-watch{ color:var(--warn); background:rgba(210,153,34,.13); }
+  .bd-good { color:var(--ok); background:rgba(63,185,80,.13); }
+  .bd-buy  { color:var(--up); background:rgba(243,66,66,.18); }
+  .xys-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:8px; margin-top:12px; }
+  .xys-cell { background:var(--card2); border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
+  .xys-cell .k { font-size:10px; color:var(--muted); }
+  .xys-cell .v { font-size:16px; font-weight:700; margin-top:2px; }
+  .xys-cell .s { font-size:10px; color:var(--muted); margin-top:1px; }
+  .xys-rule { font-size:11px; color:var(--muted); margin-top:10px; line-height:1.6;
+    border-top:1px dashed var(--border); padding-top:8px; }
+  .xys-rule b { color:var(--text); }
+  .xys-toggle { cursor:pointer; font-size:11px; color:var(--accent); text-decoration:underline; margin-top:8px; }
+  .xys-chart { display:none; margin-top:8px; }
+  .xys-chart.open { display:block; }
+  #xysChart { width:100%; height:220px; }
+</style>
+
+<div class="xys-card" id="xysCard">
+  <div class="xys-top">
+    <b>新易盛 300502</b>
+    <span class="sub">加仓信号 · 基于缩量/企稳/回踩规则</span>
+    <div class="xys-spacer"></div>
+    <span class="xys-badge bd-watch" id="xysBadge">读取中…</span>
+  </div>
+  <div class="xys-grid">
+    <div class="xys-cell"><div class="k">现价</div><div class="v" id="xysPrice">—</div><div class="s" id="xysChg"></div></div>
+    <div class="xys-cell"><div class="k">成本 / 浮盈</div><div class="v" id="xysPnL">406.00</div><div class="s" id="xysPnLPct"></div></div>
+    <div class="xys-cell"><div class="k">成交额</div><div class="v" id="xysAmt">—</div><div class="s">今日</div></div>
+    <div class="xys-cell"><div class="k">量比(5日/20日)</div><div class="v" id="xysVol">—</div><div class="s" id="xysVolTxt"></div></div>
+    <div class="xys-cell"><div class="k">关键支撑</div><div class="v" id="xysSup">400</div><div class="s" id="xysSupHit"></div></div>
+    <div class="xys-cell"><div class="k">压力位</div><div class="v" id="xysPre">450</div><div class="s" id="xysPreHit"></div></div>
+  </div>
+  <div class="xys-rule" id="xysRule">加载信号规则…</div>
+  <div class="xys-toggle" id="xysToggle">📈 查看日K线（点击展开/收起）</div>
+  <div class="xys-chart" id="xysChartWrap"><div id="xysChart"></div></div>
+</div>
+
+
 <!-- 大盘指数总览 + 市场温度计 -->
 <div class="indexbar" id="indexbar">
   <div class="idx-card loading">加载指数…</div>
@@ -495,12 +543,17 @@ function render() {
 // 注意:东财对连续请求有限流,翻页间必须加延迟并做失败重试
 const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-// ===== 静态云版(部署GitHub Pages): 无node代理, 浏览器直接请求东财接口 =====
+// ===== 东财数据代理 (公网/手机蜂窝访问时,浏览器同源请求本服务器代理,绕过东财跨域拦截) =====
+// 任何东财直连URL,经 emFetch 改写为本地代理 /api/em?<encodeURIComponent(东财URL)>
+// 本地(localhost/局域网)访问时无需代理也直接可用,此改写始终生效、无副作用
+const EM_HOST_RE = /https:\/\/push2[^\/\s]*\.eastmoney\.com\//;
 async function emFetch(url, opts) {
   let target = url;
-  if (/https:\/\/push2[^\/\s]*\.eastmoney\.com\//.test(url)) {
-    // 非delay域 → 强制换 push2delay (支持CORS, 静态无代理)
-    target = url.replace(/https:\/\/push2[^\/\s]*\.eastmoney\.com\//, 'https://push2delay.eastmoney.com/');
+  if (EM_HOST_RE.test(url)) {
+    const proxy = '/api/em?' + encodeURIComponent(url);
+    // 优先用当前页面的host(内网穿透/公网时也正确),回退 localhost
+    const base = (location.hostname === 'localhost' || location.hostname === '127.0.0.1') ? '' : '';
+    target = proxy;
   }
   return fetch(target, opts);
 }
@@ -1219,5 +1272,165 @@ loadScreener();
     window.addEventListener('scroll', onScroll, {passive:true});
     onScroll();
   })();
+
+/* ===== 新易盛(300502) 加仓信号卡 JS ===== */
+(function(){
+  if (window.__xysLoaded) return;
+  window.__xysLoaded = true;
+
+  var COST=406, SUP=400, PRE=450, CODE='300502', SECID='0.300502';
+
+  function todayKey(){
+    var d=new Date();
+    return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+  }
+  function $(id){ return document.getElementById(id); }
+
+  /* 实时行情: 东财直连(浏览器端CORS) */
+  function fetchReal(){
+    var u='https://push2delay.eastmoney.com/api/qt/stock/get?secid='+SECID+
+      '&fields=f43,f44,f45,f46,f47,f48,f50,f60,f169,f170';
+    return fetch(u).then(function(r){return r.json();}).then(function(j){
+      var d=j&&j.data;
+      if(!d||d.f43==null) throw new Error('no quote');
+      return { price:d.f43/100, chg:d.f170/100, amt:d.f48 };
+    });
+  }
+
+  /* K线 → [{date,open,close,low,high,vol}] ; 优先复用全局 fetchTqKline, 否则内置腾讯版 */
+  function toBars(k){
+    var bars=[];
+    if(k && k.dates && k.ohlc && k.vols){
+      for(var i=0;i<k.ohlc.length;i++){
+        bars.push({ date:k.dates[i], open:k.ohlc[i][0], close:k.ohlc[i][1], low:k.ohlc[i][2], high:k.ohlc[i][3], vol:k.vols[i] });
+      }
+    } else if(Array.isArray(k) && k.length && k[0].close!=null){
+      bars = k;
+    } else {
+      throw new Error('bad kline shape');
+    }
+    return bars;
+  }
+  function fetchKline(){
+    if (typeof window.fetchTqKline === 'function'){
+      return window.fetchTqKline(CODE,'101',60).then(toBars);
+    }
+    var sym='sz'+CODE;
+    var url='https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param='+sym+',day,,,60,qfq';
+    return fetch(url).then(function(r){return r.json();}).then(function(json){
+      var rows=(json&&json.data&&json.data[sym]&&json.data[sym].qfqday)||[];
+      if(!rows.length) throw new Error('empty kline');
+      return rows.map(function(r){ return { date:r[0], open:+r[1], close:+r[2], high:+r[3], low:+r[4], vol:+r[5] }; });
+    });
+  }
+
+  /* 信号计算: bars=[{date,open,close,low,high,vol}] */
+  function computeSignal(bars, price){
+    var n=bars.length; if(!n) return null;
+    var last=bars[n-1];
+    var isTodayLive = last.date === todayKey();
+    var hist = bars.slice(0, Math.max(1, n-(isTodayLive?1:0)));
+    var c=hist.map(function(b){return b.close;}), v=hist.map(function(b){return b.vol;});
+    var avg5 = v.slice(-5).length ? v.slice(-5).reduce(function(s,x){return s+x;},0)/Math.min(5,v.length) : 0;
+    var avg20 = v.slice(-20).length ? v.slice(-20).reduce(function(s,x){return s+x;},0)/Math.min(20,v.length) : 1;
+    var volRatio = avg5/avg20, shrink = volRatio<0.8;
+    var m=c.length, lastC=c[m-1], prevC=m>=2?c[m-2]:lastC;
+    var shortDown = m>=2 ? lastC<prevC : false;
+    var b0=hist[hist.length-1];
+    var body=Math.abs(b0.close-b0.open), range=(b0.high-b0.low)||1;
+    var doji=body/range<0.18, isYang=b0.close>=b0.open;
+    var broken = price<SUP;
+    var state, cls, desc;
+    if(broken && !shrink){ state='破位下跌'; cls='bd-bad'; desc='跌破支撑400且未缩量，卖压未衰竭，风险加剧。'; }
+    else if(broken){ state='跌破400'; cls='bd-bad'; desc='已破400，需重新站回上方再看企稳。'; }
+    else if(shrink && !shortDown && isYang){ state='🟢 缩量企稳·加仓信号'; cls='bd-buy'; desc='不破400+缩量+收阳/十字星：抛压衰竭，右侧观察点。'; }
+    else if(volRatio>=1.2 && !shortDown && isYang){ state='🔵 放量反弹'; cls='bd-good'; desc='放量上涨，反弹启动；看后续回踩是否缩量不破。'; }
+    else if(shrink && !shortDown){ state='🟡 缩量回踩(待确认)'; cls='bd-watch'; desc='回调缩量、卖压不重；企稳后放量上攻即确认加仓。'; }
+    else { state='⏳ 下跌中·等待企稳'; cls='bd-watch'; desc='尚未出现缩量止跌信号，等待不破400+缩量+小阳/十字星。'; }
+    return { state:state, cls:cls, desc:desc, price:price, volRatio:volRatio, shrink:shrink,
+      shortDown:shortDown, doji:doji, isYang:isYang, broken:broken,
+      pnl:price-COST, pnlPct:(price-COST)/COST*100, bars:bars };
+  }
+
+  function render(s, rt){
+    var badge=$('xysBadge'); badge.textContent=s.state; badge.className='xys-badge '+s.cls;
+    $('xysPrice').textContent=s.price.toFixed(2);
+    var chg=$('xysChg');
+    if(rt){ chg.textContent=rt.chg!=null?((rt.chg>=0?'+':'')+rt.chg.toFixed(2)+'%'):'—'; chg.style.color=(rt.chg>=0)?'var(--up)':'var(--down)'; }
+    $('xysPnL').textContent=COST.toFixed(2);
+    var pn=$('xysPnLPct');
+    pn.textContent=(s.pnl>=0?'+':'')+s.pnl.toFixed(2)+'元 ('+(s.pnlPct>=0?'+':'')+s.pnlPct.toFixed(2)+'%)';
+    pn.style.color=s.pnl>=0?'var(--up)':'var(--down)';
+    if(rt){ var amt=rt.amt/1e8; $('xysAmt').textContent=amt>=100?amt.toFixed(0)+'亿':amt.toFixed(1)+'亿'; }
+    $('xysVol').textContent=s.volRatio.toFixed(2);
+    var vt=$('xysVolTxt'); vt.textContent=s.shrink?'缩量':'未缩量'; vt.style.color=s.shrink?'var(--ok)':'var(--warn)';
+    $('xysSupHit').textContent=s.broken?'已破位!':(s.price>=SUP&&s.price<=SUP*1.03?'●接近':'');
+    $('xysSupHit').style.color=s.broken?'var(--up)':'var(--warn)';
+    $('xysPreHit').textContent=s.price>=PRE*0.97?'●接近':'';
+    $('xysRule').innerHTML='规则：'+s.desc+'<br><b>量比(5日/20日)=</b>'+s.volRatio.toFixed(2)+
+      ' · <b>支撑</b>'+SUP+' · <b>压力</b>'+PRE+' · 加仓需「不破'+SUP+' + 缩量 + 收阳」先确认企稳。';
+  }
+
+  function drawChart(s){
+    var el=$('xysChart'); if(!el) return;
+    var chart;
+    try{ chart = echarts.getInstanceByDom(el)||echarts.init(el); }catch(e){ return; }
+    var bars=s.bars;
+    chart.setOption({
+      backgroundColor:'transparent', animation:false,
+      tooltip:{trigger:'axis',axisPointer:{type:'cross'}},
+      grid:[{left:50,right:10,top:8,height:'55%'},{left:50,right:10,top:'68%',height:'20%'}],
+      xAxis:[
+        {type:'category',data:bars.map(function(b){return b.date;}),axisLine:{lineStyle:{color:'#242c3a'}},axisLabel:{color:'#8b949e',fontSize:9}},
+        {type:'category',gridIndex:1,data:bars.map(function(b){return b.date;}),axisLabel:{show:false}}
+      ],
+      yAxis:[
+        {scale:true,axisLabel:{color:'#8b949e',fontSize:9},splitLine:{lineStyle:{color:'#1c2230'}}},
+        {scale:true,gridIndex:1,axisLabel:{color:'#8b949e',fontSize:9},splitLine:{show:false}}
+      ],
+      dataZoom:[{type:'inside',xAxisIndex:[0,1],start:40,end:100}],
+      series:[
+        {type:'candlestick',data:bars.map(function(b){return [b.open,b.close,b.low,b.high];}),
+          itemStyle:{color:'#f34242',color0:'#18c964',borderColor:'#f34242',borderColor0:'#18c964'}},
+        {name:'量',type:'bar',xAxisIndex:1,yAxisIndex:1,data:bars.map(function(b){return b.vol;}),itemStyle:{color:'#58a6ff',opacity:.6}},
+        {name:'成本',type:'line',data:bars.map(function(){return COST;}),lineStyle:{color:'#d29922',width:1,type:'dashed'},symbol:'none'},
+        {name:'支撑',type:'line',data:bars.map(function(){return SUP;}),lineStyle:{color:'#18c964',width:1,type:'dotted'},symbol:'none'},
+        {name:'压力',type:'line',data:bars.map(function(){return PRE;}),lineStyle:{color:'#f34242',width:1,type:'dotted'},symbol:'none'}
+      ]
+    });
+  }
+
+  /* 主流程 */
+  var price=null, klineBars=null, chartShown=false;
+  function apply(p){ klineBars=p.bars; render(p, price!=null?{chg:null,amt:null}:null); drawChart(p); }
+  function loadAll(){
+    fetchKline().then(function(bars){
+      return computeSignal(bars, price!=null?price:bars[bars.length-1].close);
+    }).then(apply).catch(function(e){
+      $('xysBadge').textContent='⚠ 加载失败'; $('xysBadge').className='xys-badge bd-bad';
+      $('xysRule').textContent='数据获取失败: '+e.message;
+    });
+  }
+  function loadReal(){
+    fetchReal().then(function(rt){
+      price=rt.price;
+      if(klineBars){
+        var s=computeSignal(klineBars, price);
+        if(s){ render(s, rt); }
+      }
+    }).catch(function(){ /* 实时失败不影响K线信号 */ });
+  }
+  $('xysToggle').onclick=function(){
+    chartShown=!chartShown;
+    var w=$('xysChartWrap'); w.classList.toggle('open',chartShown);
+    $('xysToggle').textContent=chartShown?'📈 收起日K线':'📈 查看日K线（点击展开/收起）';
+    if(chartShown && klineBars){ var c=echarts.getInstanceByDom($('xysChart')); if(c)c.resize(); }
+  };
+
+  loadAll();
+  loadReal();
+  setInterval(loadReal, 60000);
+  setInterval(loadAll, 300000);
+})();
 </script></body>
 </html>
