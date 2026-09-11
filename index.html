@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每日选股 - A股</title>
+<style>
+  :root {
+    --bg: #0d1117; --card: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e; --up: #f85149; --down: #3fb950;
+    --accent: #58a6ff; --gold: #d29922;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: var(--text); font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; padding: 16px; }
+  .header { text-align: center; padding: 20px 0 10px; }
+  .header h1 { font-size: 22px; margin-bottom: 6px; }
+  .header .date { color: var(--muted); font-size: 13px; }
+  .note { background: #1c2128; border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; color: var(--muted); margin: 14px 0; line-height: 1.6; }
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .card .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+  .rank { font-size: 18px; font-weight: bold; color: var(--accent); margin-right: 8px; }
+  .name { font-size: 16px; font-weight: 600; }
+  .code { color: var(--muted); font-size: 12px; margin-left: 6px; }
+  .score { background: var(--gold); color: #0d1117; font-weight: bold; padding: 2px 10px; border-radius: 20px; font-size: 13px; }
+  .meta { display: flex; flex-wrap: wrap; gap: 12px; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .meta b { color: var(--text); }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .reasons { font-size: 12px; color: var(--muted); line-height: 1.5; }
+  .empty { text-align: center; color: var(--muted); padding: 40px 0; }
+  .loading { text-align: center; color: var(--accent); padding: 40px 0; animation: pulse 1s infinite; }
+  .footer { text-align: center; color: var(--muted); font-size: 11px; margin-top: 20px; padding-bottom: 30px; }
+  @keyframes pulse { 50% { opacity: 0.4; } }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>📈 每日选股</h1>
+    <div class="date" id="date">加载中…</div>
+  </div>
+  <div class="note">⚠️ 本榜单由程序按「资金面 + 技术面 + 估值」综合评分自动生成，<b>仅供参考，不构成投资建议</b>。股市有风险，投资需谨慎。</div>
+
+  <div class="list" id="list">
+    <div class="loading">正在加载选股结果…</div>
+  </div>
+
+  <div class="footer">数据来源: 东方财富 / 腾讯 · 综合评分自动生成</div>
+
+<script>
+// 选股结果 JSON (由 GitHub Actions 更新)
+const JSON_PATH = 'daily_result.json';
+
+async function load() {
+  const listEl = document.getElementById('list');
+  const dateEl = document.getElementById('date');
+  let data = null;
+  try {
+    // 在 gh-pages 同目录 fetch, 同源可正常跨域加载
+    const resp = await fetch(JSON_PATH + '?t=' + Date.now());
+    data = await resp.json();
+  } catch (e) {
+    // fetch 失败(如本地 file:// 打开)时给出提示
+  }
+  if (!data || !data.top || data.top.length === 0) {
+    listEl.innerHTML = '<div class="empty">暂无选股结果<br>请等待每日收盘后自动生成<br>或检查是否已触发生成</div>';
+    dateEl.textContent = '';
+    return;
+  }
+  dateEl.textContent = '生成日期: ' + (data.generated_date || '') + ' · 扫描 ' + (data.total_scanned || 0) + ' 只 · 精选 ' + data.top.length + ' 只';
+  listEl.innerHTML = data.top.map(s => {
+    const pct = s.pct;
+    const pctCls = pct >= 0 ? 'up' : 'down';
+    const pctStr = (pct >= 0 ? '+' : '') + pct + '%';
+    return `<div class="card">
+      <div class="top">
+        <div><span class="rank">${s.rank}</span><span class="name">${s.name}</span><span class="code">${s.code}</span></div>
+        <div class="score">${s.score}分</div>
+      </div>
+      <div class="meta">
+        <span>现价 <b>${s.price}</b></span>
+        <span>涨跌 <b class="${pctCls}">${pctStr}</b></span>
+        ${s.pe ? `<span>PE <b>${s.pe}</b></span>` : ''}
+        ${s.pb ? `<span>PB <b>${s.pb}</b></span>` : ''}
+        ${s.turnover ? `<span>换手 <b>${s.turnover}%</b></span>` : ''}
+      </div>
+      <div class="reasons">${s.reasons || ''}</div>
+    </div>`;
+  }).join('');
+}
+
+load();
+</script>
+</body>
+</html>
